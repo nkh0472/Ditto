@@ -27,6 +27,7 @@ void CAdvGeneral::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_MFCPROPERTYGRID1, m_propertyGrid);
+	DDX_Control(pDX, IDC_EDIT_ADV_FILTER, m_editFilter);
 }
 
 
@@ -38,6 +39,8 @@ BEGIN_MESSAGE_MAP(CAdvGeneral, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_PASTE_SCRIPTS, &CAdvGeneral::OnBnClickedButtonPasteScripts2)
 	ON_WM_GETMINMAXINFO()
 	ON_WM_NCLBUTTONDOWN()
+	ON_EN_CHANGE(IDC_EDIT_ADV_FILTER, &CAdvGeneral::OnEnChangeAdvFilter)
+	ON_BN_CLICKED(IDC_BUTTON_NEXT_MATCH, &CAdvGeneral::OnBnClickedButtonNextMatch)
 END_MESSAGE_MAP()
 
 
@@ -160,13 +163,13 @@ BOOL CAdvGeneral::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
+	m_propertyGrid.ModifyStyle(0, WS_CLIPCHILDREN);
+
 	HICON b = (HICON)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME), IMAGE_ICON, 64, 64, LR_SHARED);
 	SetIcon(b, TRUE);
 
-	m_propertyGrid.ModifyStyle(0, WS_CLIPCHILDREN);
-
 	CMFCPropertyGridProperty * pGroupTest = new CMFCPropertyGridProperty( _T( "Ditto" ) );
-	m_propertyGrid.AddProperty(pGroupTest);	
+	m_propertyGrid.AddProperty(pGroupTest);
 
 	m_Resize.SetParent(m_hWnd);
 	m_Resize.AddControl(IDC_MFCPROPERTYGRID1, DR_SizeWidth | DR_SizeHeight);
@@ -175,6 +178,8 @@ BOOL CAdvGeneral::OnInitDialog()
 	m_Resize.AddControl(IDC_BT_COMPACT_AND_REPAIR, DR_MoveTop);
 	m_Resize.AddControl(IDC_BUTTON_COPY_SCRIPTS, DR_MoveTop);
 	m_Resize.AddControl(IDC_BUTTON_PASTE_SCRIPTS, DR_MoveTop);
+	m_Resize.AddControl(IDC_EDIT_ADV_FILTER, DR_SizeWidth);
+	m_Resize.AddControl(IDC_BUTTON_NEXT_MATCH, DR_MoveLeft);
 
 	HDITEM hdItem;
 	hdItem.mask = HDI_WIDTH; // indicating cxy is width
@@ -219,7 +224,7 @@ BOOL CAdvGeneral::OnInitDialog()
 
 	pGroupTest->AddSubItem(new CMFCPropertyGridProperty(_T("Double shortcut keystroke timeout)"), (long)CGetSetOptions::GetDoubleKeyStrokeTimeout(), _T(""), SETTING_DOUBLE_KEYSTROKE_TIMEOUT));
 
-	AddTrueFalse(pGroupTest, _T("Draw copied color code (hex #RRGGBB or rgb(r,g,b)"), CGetSetOptions::GetDrawCopiedColorCode(), SETTING_DRAW_COPIED_COLOR_CODE);
+	AddTrueFalse(pGroupTest, _T("Draw swatch for hex, RGB, and HSL colors"), CGetSetOptions::GetDrawCopiedColorCode(), SETTING_DRAW_COPIED_COLOR_CODE);
 
 	AddTrueFalse(pGroupTest, _T("Draw RTF text in list (for RTF types) (could increase memory usage an display speed)"), CGetSetOptions::GetDrawRTF(), SETTING_DRAW_RTF);
 	pGroupTest->AddSubItem(new CMFCPropertyGridProperty(_T("Editor default font size"), (long)CGetSetOptions::GetEditorDefaultFontSize(), _T(""), SETTING_EDITOR_FONT_SIZE));
@@ -227,7 +232,7 @@ BOOL CAdvGeneral::OnInitDialog()
 	AddTrueFalse(pGroupTest, _T("Ensure Ditto is always connected to the clipboard"), CGetSetOptions::GetEnsureConnectToClipboard(), SETTING_ENSURE_CONNECTED);
 	AddTrueFalse(pGroupTest, _T("Ensure entire window is visible"), CGetSetOptions::GetEnsureEntireWindowCanBeSeen(), SETTING_ENSURE_WINDOW_IS_VISIBLE);
 
-	AddTrueFalse(pGroupTest, _T("Fast thumbnail mode (default: true means low quality but fast. false means high quality but slow)"), CGetSetOptions::GetFastThumbnailMode(), SETTING_FAST_THUMBNAIL_MODE);
+	AddTrueFalse(pGroupTest, _T("Fast thumbnails (True = fast / low quality (default). False = slow / high quality)"), CGetSetOptions::GetFastThumbnailMode(), SETTING_FAST_THUMBNAIL_MODE);
 
 	AddTrueFalse(pGroupTest, _T("Find as you type"), CGetSetOptions::GetFindAsYouType(), SETTING_FIND_AS_TYPE);
 
@@ -237,7 +242,7 @@ BOOL CAdvGeneral::OnInitDialog()
 	AddTrueFalse(pGroupTest, _T("Hide Ditto on hot key if Ditto is visible"), CGetSetOptions::GetHideDittoOnHotKeyIfAlreadyShown(), SETTING_HIDE_ON_HOTKEY_IF_VISIBLE);
 
 	pGroupTest->AddSubItem(new CMFCPropertyGridProperty(_T("Ignore copies faster than (ms) (default: 500)"), (long)CGetSetOptions::GetSaveClipDelay(), _T(""), SETTING_IGNORE_FALSE_COPIES_DELAY));
-	pGroupTest->AddSubItem(new CMFCPropertyGridProperty(_T("Ignore annoying CF_DIB when a clip is detected as text content"), CGetSetOptions::GetIgnoreAnnoyingCFDIB(), _T("Case insensitive. Recommended option is \"excel.exe; onenote.exe; powerpnt.exe\" "), SETTING_IGNORE_ANNOYING_CF_DIB));
+	pGroupTest->AddSubItem(new CMFCPropertyGridProperty(_T("Ignore CF_DIB when a clip is detected as text content"), CGetSetOptions::GetIgnoreAnnoyingCFDIB(), _T("Case insensitive. Recommended option is \"excel.exe; onenote.exe; powerpnt.exe\" "), SETTING_IGNORE_ANNOYING_CF_DIB));
 
 	static TCHAR BASED_CODE szImageEditorFilter[] = _T("Applications(*.exe)|*.exe||");
 	CMFCPropertyGridFileProperty* pImageEditorProp = new CMFCPropertyGridFileProperty(_T("Image editor path (empty for system mapping)"), TRUE, CGetSetOptions::GetImageEditorPath(), _T("exe"), 0, szImageEditorFilter, (LPCTSTR)0, SETTING_IMAGE_EDITOR_PATH);
@@ -322,7 +327,7 @@ BOOL CAdvGeneral::OnInitDialog()
 	AddTrueFalse(pGroupTest, _T("Write debug to OutputDebugString"), CGetSetOptions::GetEnableDebugLogging(), SETTING_DEBUG_TO_OUTPUT_STRING);
 
 	CMFCPropertyGridProperty * regexFilterGroup = new CMFCPropertyGridProperty(_T("Exclude clips by Regular Expressions"));
-	m_propertyGrid.AddProperty(regexFilterGroup);	
+	m_propertyGrid.AddProperty(regexFilterGroup);
 
 	CString processFilterDesc = _T("Process making the copy first must match this before the Regex will be applied (empty or * for all processes) (separate multiples by ;)");
 	CString regexFilterDesc = _T("If copied text matches this regular expression then the clip will not be saved to Ditto");
@@ -1043,4 +1048,102 @@ void CAdvGeneral::OnNcLButtonDown(UINT nHitTest, CPoint point)
 	}
 
 	CDialog::OnNcLButtonDown(nHitTest, point);
+}
+
+void CAdvGeneral::OnEnChangeAdvFilter()
+{
+	Search(false);
+}
+
+void CAdvGeneral::Search(bool fromSelection)
+{
+	CString filterText;
+	m_editFilter.GetWindowText(filterText);
+	filterText.MakeLower();
+
+	if (filterText == _T(""))
+	{
+		m_propertyGrid.SetCurSel(m_propertyGrid.GetProperty(0));
+		m_propertyGrid.EnsureVisible(m_propertyGrid.GetProperty(0), TRUE);
+		return;
+	}
+
+	auto selection = m_propertyGrid.GetCurSel();
+	bool foundSelection = false;
+
+	for (int i = 0; i < m_propertyGrid.GetPropertyCount(); ++i)
+	{
+		CMFCPropertyGridProperty* pProp = m_propertyGrid.GetProperty(i);
+		if (pProp != nullptr)
+		{
+			CString name = pProp->GetName();
+			name.MakeLower();
+
+			for (int row = 0; row < pProp->GetSubItemsCount(); ++row)
+			{
+				auto pSubItem = pProp->GetSubItem(row);
+				if (pSubItem != nullptr)
+				{
+					if (fromSelection && selection != nullptr && foundSelection == false)
+					{
+						if (selection == pSubItem)
+						{
+							foundSelection = true;
+						}
+						continue;
+					}
+
+					CString subName = pSubItem->GetName();
+					subName.MakeLower();
+					if (subName.Find(filterText) >= 0)
+					{
+						pSubItem->Show();
+						m_propertyGrid.SetCurSel(pSubItem);
+
+						//calling EnsureVisible mutliple times seemed to show it better otherwise it would randomly not work
+						if (row > 2)
+						{
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 2), TRUE);
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 2), TRUE);
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 2), TRUE);
+						}
+						else if (row > 1)
+						{
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 1), TRUE);
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 1), TRUE);
+							m_propertyGrid.EnsureVisible(pProp->GetSubItem(row - 1), TRUE);
+						}
+						else
+						{
+							m_propertyGrid.EnsureVisible(pSubItem, TRUE);
+							m_propertyGrid.EnsureVisible(pSubItem, TRUE);
+							m_propertyGrid.EnsureVisible(pSubItem, TRUE);
+						}
+						
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
+BOOL CAdvGeneral::PreTranslateMessage(MSG* pMsg)
+{
+	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN)
+	{
+		int idCtrl = this->GetFocus()->GetDlgCtrlID();
+		if (idCtrl == IDC_EDIT_ADV_FILTER)
+		{
+			Search(true);
+			return TRUE;
+		}
+	}
+
+	return CDialogEx::PreTranslateMessage(pMsg);
+}
+
+void CAdvGeneral::OnBnClickedButtonNextMatch()
+{
+	Search(true);	
 }

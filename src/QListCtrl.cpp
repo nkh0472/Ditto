@@ -319,7 +319,7 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 			csText = csText.Mid(nSymEnd + 1);
 		}
 
-		// Draw the background of the list item.  Colors are selected 
+		// Draw the background of the list item.  Colors are selected
 		// according to the item's state.
 		if (rItem.state & LVIS_SELECTED)
 		{
@@ -359,7 +359,7 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 
 		if (m_showIfClipWasPasted &&
 			strSymbols.GetLength() > 0 &&
-			strSymbols.Find(_T("<pasted>")) >= 0) //clip was pasted from ditto 
+			strSymbols.Find(_T("<pasted>")) >= 0) //clip was pasted from ditto
 		{
 			CRect pastedRect(rcItem);
 			pastedRect.left++;
@@ -398,7 +398,7 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 		// draw the symbol box
 		if (strSymbols.GetLength() > 0)
 		{
-			if (strSymbols.Find(_T("<group>")) >= 0) //group 
+			if (strSymbols.Find(_T("<group>")) >= 0) //group
 			{
 				m_groupFolder.Draw(pDC, *m_windowDpi, this, rcText.left, rcText.top, false, false);
 				rcText.left += m_groupFolder.ImageWidth() + m_windowDpi->Scale(2);
@@ -487,7 +487,7 @@ void CQListCtrl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult)
 			pDC->SelectObject(pOldPen);
 		}
 
-		// restore the previous values		
+		// restore the previous values
 		if (OldColor > -1)
 			pDC->SetTextColor(OldColor);
 
@@ -576,7 +576,7 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 	// Store original case potentially for display, but use lower for parsing
 	CString originalCleanedText = cleanedText;
 	CString parseText = cleanedText;
-	parseText.MakeLower(); // Use lower case for keyword matching ('rgb', 'hsl', '0x')
+	parseText.MakeLower(); // Use lower case for keyword matching ('rgb', 'hsl', '0x', '#')
 
 	// 2. Helper function to draw the color box
 	auto DrawColorBox = [&](COLORREF color)
@@ -584,7 +584,7 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 			CRect pastedRect(rcText);
 			int boxSize = m_windowDpi->Scale(rcText.Height());
 			// Prevent overly large boxes if text rect somehow becomes huge
-			boxSize = min(boxSize, m_windowDpi->Scale(20)); 
+			boxSize = min(boxSize, m_windowDpi->Scale(20));
 			pastedRect.right = pastedRect.left + boxSize;
 			pastedRect.bottom = pastedRect.top + boxSize; // Make it square
 
@@ -600,37 +600,50 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 	// 3. --- Hex Color Parsing ---
 	CString hexString;
 	bool isHex = false;
-	int hexLength = 0;
+	bool is0xPrefix = false; // Flag to track prefix type ('0x' vs '#')
+	int originalHexLength = 0;
 
 	if (parseText.GetLength() >= 2 && parseText.Left(2) == _T("0x"))
 	{
-		// Format: 0xRRGGBB (8 chars total) or 0xAARRGGBB (10 chars total)
 		hexString = parseText.Mid(2); // Get part after 0x
-		hexLength = hexString.GetLength();
-		if ((hexLength == 6 || hexLength == 8) && IsHexString(hexString))
+		originalHexLength = hexString.GetLength();
+		// Supported lengths for 0x: 3 (RGB -> RRGGBB), 6 (RRGGBB), 8 (AARRGGBB)
+		// Exclude length 4 (0xRGBA) as it's ambiguous/non-standard
+		if ((originalHexLength == 3 || originalHexLength == 6 || originalHexLength == 8) && IsHexString(hexString))
 		{
 			isHex = true;
-			// Keep hexString as is (6 or 8 hex digits)
+			is0xPrefix = true;
+			// Expand 0xRGB -> RRGGBB (will assign Alpha later)
+			if (originalHexLength == 3)
+			{
+				hexString.Format(_T("%c%c%c%c%c%c"), hexString[0], hexString[0], hexString[1], hexString[1], hexString[2], hexString[2]);
+				// Length becomes 6
+			}
+			// No expansion needed for 6 (0xRRGGBB) or 8 (0xAARRGGBB)
 		}
 	}
 	else if (parseText.GetLength() >= 1 && parseText.Left(1) == _T("#"))
 	{
-		// Format: #RGB (4), #RGBA (5), #RRGGBB (7), #RRGGBBAA (9)
 		hexString = parseText.Mid(1); // Get part after #
-		hexLength = hexString.GetLength();
-		if ((hexLength == 3 || hexLength == 4 || hexLength == 6 || hexLength == 8) && IsHexString(hexString))
+		originalHexLength = hexString.GetLength();
+		// Supported lengths for #: 3 (RGB), 4 (RGBA), 6 (RRGGBB), 8 (RRGGBBAA)
+		if ((originalHexLength == 3 || originalHexLength == 4 || originalHexLength == 6 || originalHexLength == 8) && IsHexString(hexString))
 		{
 			isHex = true;
-			// Expand #RGB to #RRGGBB and #RGBA to #RRGGBBAA if needed
-			if (hexLength == 3) // RGB -> RRGGBB
+			is0xPrefix = false; // It's a # prefix
+			// Expand #RGB -> RRGGBB
+			if (originalHexLength == 3)
 			{
 				hexString.Format(_T("%c%c%c%c%c%c"), hexString[0], hexString[0], hexString[1], hexString[1], hexString[2], hexString[2]);
+				// Length becomes 6
 			}
-			else if (hexLength == 4) // RGBA -> RRGGBBAA
+			// Expand #RGBA -> RRGGBBAA
+			else if (originalHexLength == 4)
 			{
 				hexString.Format(_T("%c%c%c%c%c%c%c%c"), hexString[0], hexString[0], hexString[1], hexString[1], hexString[2], hexString[2], hexString[3], hexString[3]);
+				// Length becomes 8
 			}
-			// hexString is now 6 or 8 hex digits
+			// No expansion needed for 6 (#RRGGBB) or 8 (#RRGGBBAA)
 		}
 	}
 
@@ -639,35 +652,40 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 		int r = 0, g = 0, b = 0, a = 255; // Default alpha to fully opaque
 		int scanRet = 0;
 		unsigned int hexValue = 0;
+		int finalHexLength = hexString.GetLength(); // Length after potential expansion
 
-		// Use swscanf to parse the final 6 or 8 digit hex string
-		scanRet = swscanf(hexString, _T("%x"), &hexValue);
+		// At this point, hexString should contain 6 or 8 hex digits if isHex is true
+		if (finalHexLength != 6 && finalHexLength != 8) {
+			// This case should not be reached if the logic above is correct, but acts as a safeguard
+			isHex = false;
+		}
+		else {
+			// Use swscanf to parse the final 6 or 8 digit hex string
+			scanRet = swscanf(hexString, _T("%x"), &hexValue);
+		}
 
-		if (scanRet == 1)
+		if (isHex && scanRet == 1)
 		{
-			if (hexString.GetLength() == 8) // RRGGBBAA or AARRGGBB (handle both standards, CSS uses RGBA, some contexts use ARGB)
+			if (finalHexLength == 8) // 8 digits: AARRGGBB (for 0x) or RRGGBBAA (for #)
 			{
-				// Assuming RRGGBBAA based on CSS standard (# format expansion)
-				// If parsing 0x format, the original code assumed ARGB. Let's stick to CSS standard RGBA for consistency here.
-				// If you need strict 0xAARRGGBB, add specific check for "0x" prefix here.
-				r = (hexValue >> 24) & 0xFF;
-				g = (hexValue >> 16) & 0xFF;
-				b = (hexValue >> 8) & 0xFF;
-				a = hexValue & 0xFF;
-				// If input was 0x format AND you require 0xAARRGGBB specifically:
-				// if (parseText.Left(2) == _T("0x")) {
-				//     a = (hexValue >> 24) & 0xFF;
-				//     r = (hexValue >> 16) & 0xFF;
-				//     g = (hexValue >> 8) & 0xFF;
-				//     b = hexValue & 0xFF;
-				// }
+				if (is0xPrefix) { // Handle 0xAARRGGBB
+					a = (hexValue >> 24) & 0xFF;
+					r = (hexValue >> 16) & 0xFF;
+					g = (hexValue >> 8) & 0xFF;
+					b = hexValue & 0xFF;
+				} else { // Handle #RRGGBBAA (or expanded #RGBA)
+					r = (hexValue >> 24) & 0xFF;
+					g = (hexValue >> 16) & 0xFF;
+					b = (hexValue >> 8) & 0xFF;
+					a = hexValue & 0xFF;
+				}
 			}
-			else // 6 digits (RRGGBB)
+			else // 6 digits (RRGGBB - from #RGB, 0xRGB, #RRGGBB, 0xRRGGBB)
 			{
 				r = (hexValue >> 16) & 0xFF;
 				g = (hexValue >> 8) & 0xFF;
 				b = hexValue & 0xFF;
-				a = 255; // No alpha info
+				a = 255; // Explicitly set full opacity for all 6-digit formats
 			}
 
 			// Basic validation on parsed values (should be redundant if IsHexString worked)
@@ -683,10 +701,10 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 	// Formats: rgb(R, G, B), rgba(R, G, B, A), rgb(R G B), rgb(R G B / A)
 	// R, G, B are 0-255. A is 0.0-1.0
 	// Percentage formats like rgb(100%, 0%, 0%) are NOT handled by this swscanf logic.
-	if (parseText.StartsWith(_T("rgb")) && parseText.EndsWith(_T(")")))
+	if (parseText.Left(3) == _T("rgb") && parseText.Right(1) == _T(")"))
 	{
 		CString content;
-		bool isRgba = parseText.StartsWith(_T("rgba"));
+		bool isRgba = parseText.Left(4) == _T("rgba");
 		int prefixLen = isRgba ? 5 : 4; // Length of "rgba(" or "rgb("
 		content = parseText.Mid(prefixLen, parseText.GetLength() - prefixLen - 1); // Extract content within ()
 		content.Trim(); // Trim spaces within parentheses
@@ -699,11 +717,24 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 		// Try parsing comma-separated format first (most common)
 		// Check if it contains commas before trying swscanf
 		if (content.Find(',') != -1) {
-			scanRet = swscanf(content, _T("%d ,%d ,%d , %lf"), &r, &g, &b, &a_double); // rgba(R, G, B, A)
+			scanRet = swscanf(content, _T("%d , %d ,%d , %lf"), &r, &g, &b, &a_double); // rgba(R, G, B, A)
 			if (scanRet >= 3) { // Need at least R, G, B
 				parsed = true;
 				if (isRgba && scanRet != 4) parsed = false; // rgba() must have 4 values
 				if (!isRgba && scanRet == 4) parsed = false; // rgb() must not have 4 values
+			}
+
+			if (!parsed) {
+				scanRet = swscanf(content, _T("%d %% , %d %% , %d %% , %lf %%"), &r, &g, &b, &a_double);
+				if (scanRet >= 3) {
+					r = ((double)r / 100) * 255;
+					g = ((double)g / 100) * 255;
+					b = ((double)b / 100) * 255;
+					a_double = (a_double / 100) * 1;
+					parsed = true;
+					if (isRgba && scanRet != 4) parsed = false; // rgba() must have 4 values
+					if (!isRgba && scanRet == 4) parsed = false; // rgb() must not have 4 values
+				}
 			}
 		}
 
@@ -749,10 +780,10 @@ void CQListCtrl::DrawCopiedColorCode(CString& csText, CRect& rcText, CDC* pDC)
 	// Formats: hsl(H, S%, L%), hsla(H, S%, L%, A), hsl(H S% L%), hsl(H S% L% / A)
 	// Also supports 'deg' suffix for Hue.
 	// H is 0-360, S/L are 0-100%, A is 0.0-1.0
-	if (parseText.StartsWith(_T("hsl")) && parseText.EndsWith(_T(")")))
+	if (parseText.Left(3) == _T("hsl") && parseText.Right(1) == _T(")"))
 	{
 		CString content;
-		bool isHsla = parseText.StartsWith(_T("hsla"));
+		bool isHsla = parseText.Left(4) == _T("hsla");
 		int prefixLen = isHsla ? 5 : 4; // Length of "hsla(" or "hsl("
 		content = parseText.Mid(prefixLen, parseText.GetLength() - prefixLen - 1); // Extract content within ()
 		content.Trim(); // Trim spaces within parentheses
